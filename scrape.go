@@ -233,7 +233,8 @@ func (g *Goscrape) Scrape(infohash ...[]byte) ([]*ScrapeResult, error) {
 		break
 	}
 
-	if n < 8 {
+	// Check expected packet size
+	if n < 8+(12*len(infohash)) {
 		return nil, ErrResponse
 	}
 
@@ -252,15 +253,15 @@ func (g *Goscrape) Scrape(infohash ...[]byte) ([]*ScrapeResult, error) {
 
 	r := make([]*ScrapeResult, len(infohash))
 
-	i := 0
-	for offset := 8; offset < n; offset += 12 {
+	offset := 8
+	for i := 0; i < len(infohash); i++ {
 		r[i] = &ScrapeResult{
 			Infohash:  infohash[i],
 			Seeders:   binary.BigEndian.Uint32(response[offset:]),
 			Completed: binary.BigEndian.Uint32(response[offset+4:]),
 			Leechers:  binary.BigEndian.Uint32(response[offset+8:]),
 		}
-		i++
+		offset += 12
 	}
 
 	return r, nil
