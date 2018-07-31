@@ -23,7 +23,7 @@ const (
 	actionAnnounce uint32 = 1
 	actionScrap    uint32 = 2
 	actionError    uint32 = 3
-	timeout               = time.Second * 15
+	defaultTimeout        = time.Second * 15
 )
 
 var (
@@ -61,6 +61,7 @@ type Goscrape struct {
 	connectionID uint64
 	session      time.Time
 	retries      int
+	timeout      time.Duration
 }
 
 func init() {
@@ -81,12 +82,18 @@ func New(rawurl string) (*Goscrape, error) {
 	return &Goscrape{
 		url:     u.Host,
 		retries: 3,
+		timeout: defaultTimeout,
 	}, nil
 }
 
 // SetRetryLimit sets the maximum number of attempts to do before giving up
 func (g *Goscrape) SetRetryLimit(retries int) {
 	g.retries = retries
+}
+
+// SetTimeout configure the time to wait for a tracker to answer a query
+func (g *Goscrape) SetTimeout(timeout time.Duration) {
+	g.timeout = timeout
 }
 
 func (g *Goscrape) transactionID() uint32 {
@@ -109,7 +116,7 @@ func (g *Goscrape) connect() (net.Conn, uint64, error) {
 		binary.BigEndian.PutUint32(buf[8:], 0)    // action connect
 		binary.BigEndian.PutUint32(buf[12:], tid) // transaction id
 
-		g.conn, err = net.DialTimeout("udp", g.url, timeout)
+		g.conn, err = net.DialTimeout("udp", g.url, g.timeout)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -120,7 +127,7 @@ func (g *Goscrape) connect() (net.Conn, uint64, error) {
 			retries++
 
 			// Set a write deadline
-			g.conn.SetWriteDeadline(time.Now().Add(timeout))
+			g.conn.SetWriteDeadline(time.Now().Add(g.timeout))
 
 			n, err = g.conn.Write(buf)
 			if err != nil {
@@ -131,7 +138,7 @@ func (g *Goscrape) connect() (net.Conn, uint64, error) {
 			}
 
 			// Set a read deadline
-			g.conn.SetReadDeadline(time.Now().Add(timeout))
+			g.conn.SetReadDeadline(time.Now().Add(g.timeout))
 
 			// Reuse our buffer to read the response
 			n, err = g.conn.Read(buf)
@@ -206,7 +213,7 @@ func (g *Goscrape) Scrape(infohash ...[]byte) ([]*ScrapeResult, error) {
 		retries++
 
 		// Set a write deadline
-		conn.SetWriteDeadline(time.Now().Add(timeout))
+		conn.SetWriteDeadline(time.Now().Add(g.timeout))
 
 		// Send the packet to the tracker
 		n, err = conn.Write(buf)
@@ -219,7 +226,7 @@ func (g *Goscrape) Scrape(infohash ...[]byte) ([]*ScrapeResult, error) {
 		}
 
 		// Set a read deadline
-		conn.SetReadDeadline(time.Now().Add(timeout))
+		conn.SetReadDeadline(time.Now().Add(g.timeout))
 
 		n, err = conn.Read(response)
 		if err, ok := err.(net.Error); ok && err.Timeout() {
